@@ -1,0 +1,84 @@
+#include "DigitalOut.h"
+#include "ThisThread.h"
+#include "mbed.h"
+
+Thread thread;
+
+DigitalOut led1(LED1);
+DigitalOut led2(PC_7);
+
+#include "mbed.h"
+typedef struct {
+int led;
+int led2;
+} message_t;
+
+uint32_t i = 0;
+
+/*здесь используется объект класса MemoryPool, для определения и
+управления пулом памяти фиксированного размера, информацию об этом
+классе изучите в документации */
+MemoryPool<message_t, 16> mpool;
+Queue<message_t, 16> queue;
+
+/* первый поток отправитель */
+void send_thread(void)
+{
+  
+  while (true) {
+  led1 = !led1;
+    i++; /* так как настоящие данные брать неоткуда здесь они
+    генерируются*/
+    message_t *message = mpool.alloc();
+    message->led = led1;
+    message->led2 = led2;
+    queue.put(message);
+    ThisThread::sleep_for(1000ms);
+  }
+}
+
+Thread thread2;
+MemoryPool<message_t, 16> mpool2;
+Queue<message_t, 16> queue2;
+/* второй поток отправитель */
+void send_thread2(void)
+{
+while (true) {
+  led2 = !led2;
+
+    message_t *message = mpool2.alloc();
+    message->led = led1;
+    message->led2 = led2;
+    queue2.put(message);
+    ThisThread::sleep_for(1000ms);
+  }
+  
+}
+
+
+int main(void)
+{
+    thread.start(callback(send_thread));
+    thread2.start(callback(send_thread2));
+
+    while (true) {
+        osEvent evt = queue.get();
+        
+        if (evt.status == osEventMessage) {
+            message_t *message = (message_t *)evt.value.p;
+            printf("Number of cycles: %u\n\r", i);
+            printf("led1: %u\n\r", message->led);
+            mpool.free(message); 
+        }
+        
+        osEvent evt1 = queue2.get();
+        if (evt1.status == osEventMessage) {
+            message_t *message = (message_t *)evt1.value.p;
+            printf("led2: %u\n\r", message->led2);
+            mpool2.free(message);
+        }
+    }
+   
+
+  
+}
